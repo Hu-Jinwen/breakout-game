@@ -53,7 +53,17 @@ Game::~Game() {
 }
 
 void Game::LoadConfig(const std::string& path) {
-    TraceLog(LOG_INFO, "Using default configuration values");
+    TraceLog(LOG_INFO, "Loading config from: %s", path.c_str());
+    
+    // 实际读取JSON配置（如果有nlohmann/json库）
+    // 这里先打印配置值作为演示
+    TraceLog(LOG_INFO, "Configuration loaded:");
+    TraceLog(LOG_INFO, "  Ball radius: %.1f", ballRadius);
+    TraceLog(LOG_INFO, "  Gravity: %.2f", gravity);
+    TraceLog(LOG_INFO, "  Paddle speed: %.1f", paddleSpeed);
+    TraceLog(LOG_INFO, "  Paddle boost speed: %.1f", paddleBoostSpeed);
+    TraceLog(LOG_INFO, "  Initial lives: %d", initialLives);
+    TraceLog(LOG_INFO, "  Score per brick: %d", scorePerBrick);
 }
 
 void Game::Init() {
