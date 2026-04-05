@@ -1,5 +1,4 @@
 build/
 *.o
 *.exe
-breakout_week2
-game
+scores.txt

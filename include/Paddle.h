@@ -11,7 +11,10 @@ public:
     void Draw();
     void MoveLeft(float speed);
     void MoveRight(float speed);
-    Rectangle GetRect() const { return rect; }  // 新增
+    
+    Rectangle GetRect() const { return rect; }
+    float GetCenterX() const { return rect.x + rect.width / 2; }
+    float GetTopY() const { return rect.y; }
 };
 
 #endif
