@@ -15,6 +15,7 @@ add_executable(breakout_game
     src/Ball.cpp
     src/Paddle.cpp
     src/Brick.cpp
+    src/PowerUp.cpp
 )
 
 target_link_libraries(breakout_game raylib)
@@ -25,6 +26,7 @@ add_executable(test_game
     src/Ball.cpp
     src/Paddle.cpp
     src/Brick.cpp
+    src/PowerUp.cpp
 )
 
 target_link_libraries(test_game raylib)

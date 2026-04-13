@@ -30,5 +30,28 @@
         "initialLives": 3,
         "scorePerBrick": 10,
         "deathPenalty": 50
+    },
+    "powerups": {
+        "drop_rate": 0.35,
+        "paddle_extend": {
+            "extra_width": 40.0,
+            "duration": 5.0,
+            "weight": 35
+        },
+        "multi_ball": {
+            "extra_balls": 2,
+            "duration": 0,
+            "weight": 30
+        },
+        "slow_ball": {
+            "speed_factor": 0.6,
+            "duration": 4.0,
+            "weight": 35
+        }
+    },
+    "particles": {
+        "count_per_brick": 12,
+        "particle_lifetime": 0.6,
+        "gravity": 200.0
     }
 }

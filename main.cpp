@@ -4,7 +4,7 @@
 int main() {
     const int screenWidth = 800;
     const int screenHeight = 600;
-    InitWindow(screenWidth, screenHeight, "Breakout - Enhanced");
+    InitWindow(screenWidth, screenHeight, "Breakout - Enhanced with PowerUps!");
     SetTargetFPS(60);
     
     Game game;
