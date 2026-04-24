@@ -39,6 +39,19 @@ Game::Game()
     , ballSpeedMultiplier(1.0f)
     , isSlowed(false)
     , leaderboardCount(0)
+    // 网络成员初始化（注意不要重复初始化 currentState）
+    , netHost(nullptr)
+    , netPeer(nullptr)
+    , isHost(false)
+    , isConnected(false)
+    , lastSendTime(0)
+    , lastRecvTime(0)
+    , netCurrentState{}      // 改名
+    , netTargetState{}       // 改名
+    , lastStateTime(0)
+    , nextStateTime(0)
+    , opponentPaddleX(0)
+    , opponentScore(0)
 {
     brickColors[0] = RED;
     brickColors[1] = ORANGE;
@@ -82,6 +95,55 @@ void Game::Init() {
     srand((unsigned int)time(nullptr));
     
     TraceLog(LOG_INFO, "Game initialized. Initial state: MENU");
+}
+
+void Game::InitNetwork(bool asHost, const char* serverIP) {
+    // 初始化 ENet 库（只初始化一次）
+    static bool enetInitialized = false;
+    if (!enetInitialized) {
+        if (enet_initialize() != 0) {
+            TraceLog(LOG_ERROR, "ENet initialization failed!");
+            return;
+        }
+        enetInitialized = true;
+        TraceLog(LOG_INFO, "ENet initialized");
+    }
+    
+    isHost = asHost;
+    
+    if (asHost) {
+        // ===== 主机模式 =====
+        ENetAddress address;
+        enet_address_set_host(&address, "0.0.0.0");
+        address.port = 12345;
+        
+        netHost = enet_host_create(&address, 1, 2, 0, 0);
+        if (!netHost) {
+            TraceLog(LOG_ERROR, "Failed to create ENet host!");
+            return;
+        }
+        TraceLog(LOG_INFO, "Server started on port 12345, waiting for client...");
+        isConnected = false;
+    } else {
+        // ===== 客户端模式 =====
+        netHost = enet_host_create(nullptr, 1, 2, 0, 0);
+        if (!netHost) {
+            TraceLog(LOG_ERROR, "Failed to create ENet client!");
+            return;
+        }
+        
+        ENetAddress address;
+        enet_address_set_host(&address, serverIP);
+        address.port = 12345;
+        
+        netPeer = enet_host_connect(netHost, &address, 2, 0);
+        if (!netPeer) {
+            TraceLog(LOG_ERROR, "Failed to connect to server!");
+            return;
+        }
+        TraceLog(LOG_INFO, "Connecting to server %s:12345...", serverIP);
+        isConnected = false;
+    }
 }
 
 void Game::InitBricks() {
@@ -242,6 +304,82 @@ void Game::UpdateGame() {
     ball.ApplyGravity();
     CheckCollisions();
     CheckWinCondition();
+}
+
+void Game::UpdateNetwork() {
+    if (!netHost) return;
+    
+    ENetEvent event;
+    float now = GetTime();
+    
+    while (enet_host_service(netHost, &event, 0) > 0) {
+        switch (event.type) {
+            case ENET_EVENT_TYPE_CONNECT:
+                TraceLog(LOG_INFO, "Client connected to server!");
+                isConnected = true;
+                netPeer = event.peer;
+                break;
+                
+            case ENET_EVENT_TYPE_RECEIVE:
+                if (isHost) {
+                    if (event.packet->dataLength == sizeof(float)) {
+                        float clientPaddleX;
+                        memcpy(&clientPaddleX, event.packet->data, sizeof(float));
+                        opponentPaddleX = clientPaddleX;
+                    }
+                } else {
+                    if (event.packet->dataLength == sizeof(NetworkGameState)) {
+                        netCurrentState = netTargetState;
+                        lastStateTime = lastRecvTime;
+                        
+                        memcpy(&netTargetState, event.packet->data, sizeof(NetworkGameState));
+                        nextStateTime = now;
+                        lastRecvTime = now;
+                    }
+                }
+                enet_packet_destroy(event.packet);
+                break;
+                
+            case ENET_EVENT_TYPE_DISCONNECT:
+                TraceLog(LOG_WARNING, "Peer disconnected!");
+                isConnected = false;
+                break;
+                
+            default:
+                break;
+        }
+    }
+    
+    // 主机发送状态
+    if (isHost && isConnected && netPeer && ball.IsLaunched()) {
+        if (now - lastSendTime >= 1.0f / 30.0f) {
+            NetworkGameState state;
+            state.ballX = ball.GetPosition().x;
+            state.ballY = ball.GetPosition().y;
+            state.ballSpeedX = ball.GetSpeed().x;
+            state.ballSpeedY = ball.GetSpeed().y;
+            state.paddle1X = paddle.GetRect().x;
+            state.paddle2X = opponentPaddleX;
+            state.score1 = score;
+            state.score2 = opponentScore;
+            
+            ENetPacket* packet = enet_packet_create(&state, sizeof(state), 
+                                                     ENET_PACKET_FLAG_UNSEQUENCED);
+            enet_peer_send(netPeer, 0, packet);
+            lastSendTime = now;
+        }
+    }
+    
+    // 客户端发送板位置
+    if (!isHost && isConnected && netPeer && ball.IsLaunched()) {
+        if (now - lastSendTime >= 1.0f / 30.0f) {
+            float myPaddleX = paddle.GetRect().x;
+            ENetPacket* packet = enet_packet_create(&myPaddleX, sizeof(myPaddleX), 
+                                                     ENET_PACKET_FLAG_UNSEQUENCED);
+            enet_peer_send(netPeer, 0, packet);
+            lastSendTime = now;
+        }
+    }
 }
 
 void Game::CheckCollisions() {
@@ -707,6 +845,9 @@ void Game::DrawVictory() {
 // ========== 主循环 ==========
 
 void Game::Update() {
+// ===== 新增：网络更新（放在最前面） =====
+    UpdateNetwork();
+
     HandleInput();
     paddle.Update(GetFrameTime());
     
@@ -732,15 +873,42 @@ void Game::Draw() {
         case GameState::MENU:
             DrawMenu();
             break;
+            
         case GameState::PLAYING:
-            ball.Draw();
+            // 客户端插值绘制
+            if (!isHost && isConnected && ball.IsLaunched()) {
+                double now = GetTime();
+                double t = 1.0;
+                
+                if (nextStateTime > lastStateTime && lastStateTime > 0) {
+                    t = (now - lastStateTime) / (nextStateTime - lastStateTime);
+                    t = std::clamp(t, 0.0, 1.0);
+                }
+                
+                float drawX = netCurrentState.ballX * (1 - t) + netTargetState.ballX * t;
+                float drawY = netCurrentState.ballY * (1 - t) + netTargetState.ballY * t;
+                
+                DrawCircleV({drawX, drawY}, ball.GetRadius(), RED);
+                
+                float oppPaddleX = netTargetState.paddle2X;
+                if (oppPaddleX > 0) {
+                    Rectangle oppRect = { oppPaddleX, paddle.GetRect().y, 
+                                          paddle.GetRect().width, paddle.GetRect().height };
+                    DrawRectangleRec(oppRect, ColorAlpha(BLUE, 0.6f));
+                    DrawRectangleLinesEx(oppRect, 2, DARKBLUE);
+                }
+            } else {
+                ball.Draw();
+            }
+            
             DrawExtraBalls();
             paddle.Draw();
             for (auto& brick : bricks) brick.Draw();
-            for (auto& powerUp : powerUps) powerUp.Draw();
+            for (auto& powerUp : powerUps) powerUp.Draw();  // 注意大小写
             DrawParticles();
             DrawUI();
             break;
+            
         case GameState::PAUSED:
             ball.Draw();
             DrawExtraBalls();
@@ -751,15 +919,19 @@ void Game::Draw() {
             DrawUI();
             DrawPaused();
             break;
+            
         case GameState::LEADERBOARD:
             DrawLeaderboard();
             break;
+            
         case GameState::GAMEOVER:
             DrawGameOver();
             break;
+            
         case GameState::VICTORY:
             DrawVictory();
             break;
+            
         default:
             break;
     }
@@ -827,5 +999,12 @@ int Game::AddToLeaderboard(const char* name, int score) {
 
 void Game::Shutdown() {
     SaveLeaderboard();
+
+    // ===== 新增：释放网络资源 =====
+    if (netHost) {
+        enet_host_destroy(netHost);
+    }
+    enet_deinitialize();
+    
     TraceLog(LOG_INFO, "Game shutdown");
 }

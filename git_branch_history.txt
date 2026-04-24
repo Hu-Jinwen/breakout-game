@@ -1,0 +1,8 @@
+* f69c53d -  (HEAD -> master, tag: v1.0.0, feature/powerups, feature/particles, feature/factory-pattern, feature/config-driven) feat: 完成道具系统和粒子特效完整实现 - 实现3种道具：加长板(↔)、多球(●)、减速球(🐌) - 添加粒子特效：砖块破碎粒子和道具掉落光晕 - 应用工厂模式管理道具效果，支持多态 - 支持JSON配置文件驱动 - 添加排行榜系统和游戏状态机 (9 minutes ago)
+* bd63cb2 -  (origin/master, origin/feature/unit-tests, feature/unit-tests) test: 更新单元测试 (7 days ago)
+* f674fe9 -  (origin/feature/config-file, feature/config-file) feat: 增强配置加载功能，添加配置日志输出 (7 days ago)
+* 35805f2 -  (origin/feature/game-state, feature/game-state) feat: 初始提交 - 完成Game类重构和状态机 (7 days ago)
+* 11facb3 -  test: 修复单元测试，所有测试通过 (2 weeks ago)
+* 5734223 -  feat: 添加生命值和分数 (2 weeks ago)
+* 04e1e57 -  (origin/feature/collision, feature/collision) feat: 实现球与板碰撞 (2 weeks ago)
+* d5dc0c2 -  feat: 初始化打砖块游戏，实现基础碰撞检测和游戏规则 (2 weeks ago)
