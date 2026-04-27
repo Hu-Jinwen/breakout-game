@@ -52,6 +52,10 @@ Game::Game()
     , nextStateTime(0)
     , opponentPaddleX(0)
     , opponentScore(0)
+    , asyncLoader(nullptr)
+    , showLoadedTexture(false)
+    , textureDisplayTimer(0.0f)
+    , isLoadingRequested(false)
 {
     brickColors[0] = RED;
     brickColors[1] = ORANGE;
@@ -63,6 +67,7 @@ Game::Game()
     brickColors[7] = PINK;
     
     memset(leaderboardEntries, 0, sizeof(leaderboardEntries));
+    loadedDemoTexture = Texture2D{0};
 }
 
 Game::~Game() {
@@ -85,6 +90,9 @@ void Game::LoadConfig(const std::string& path) {
 
 void Game::Init() {
     LoadConfig("config.json");
+
+        // 初始化异步加载器
+    asyncLoader = new AsyncResourceLoader(textureCache);
     
     ball = Ball({(float)screenWidth/2, (float)screenHeight/2}, {0, 0}, ballRadius);
     paddle = Paddle(screenWidth/2 - paddleWidth/2, screenHeight - 50, paddleWidth, paddleHeight);
@@ -92,6 +100,8 @@ void Game::Init() {
     InitBricks();
     LoadLeaderboard();
     
+    loadedDemoTexture = Texture2D{0};
+
     srand((unsigned int)time(nullptr));
     
     TraceLog(LOG_INFO, "Game initialized. Initial state: MENU");
@@ -177,6 +187,15 @@ void Game::HandleInput() {
             if (IsKeyPressed(KEY_L)) {
                 ChangeState(GameState::LEADERBOARD);
             }
+
+            if (IsKeyPressed(KEY_L)) {
+                if (asyncLoader) {
+                    asyncLoader->ForceRestart();  // 强制重置
+                    asyncLoader->StartLoadTexture("demo_texture.png");  // 直接开始加载
+                    TraceLog(LOG_INFO, "L key pressed - starting async load");
+                }
+            }
+
             break;
             
         case GameState::PLAYING: {
@@ -850,6 +869,9 @@ void Game::Update() {
 
     HandleInput();
     paddle.Update(GetFrameTime());
+
+    // 任务3: 使用互斥锁保护共享数据（已在 AsyncResourceLoader 内部实现）
+    UpdateAsyncLoading();
     
     if (currentState == GameState::PLAYING) {
         UpdateGame();
@@ -872,6 +894,7 @@ void Game::Draw() {
     switch (currentState) {
         case GameState::MENU:
             DrawMenu();
+            DrawAsyncLoadingUI();
             break;
             
         case GameState::PLAYING:
@@ -1000,6 +1023,17 @@ int Game::AddToLeaderboard(const char* name, int score) {
 void Game::Shutdown() {
     SaveLeaderboard();
 
+        // 释放异步加载器
+    if (asyncLoader) {
+        delete asyncLoader;
+        asyncLoader = nullptr;
+    }
+    
+    // 释放加载的纹理
+    if (loadedDemoTexture.id != 0) {
+        UnloadTexture(loadedDemoTexture);
+    }
+
     // ===== 新增：释放网络资源 =====
     if (netHost) {
         enet_host_destroy(netHost);
@@ -1007,4 +1041,137 @@ void Game::Shutdown() {
     enet_deinitialize();
     
     TraceLog(LOG_INFO, "Game shutdown");
+}
+
+// ========== 任务实现 ==========
+
+// 任务1: 按下 L 键时启动异步加载
+void Game::RequestAsyncLoad(const std::string& texturePath) {
+    if (!asyncLoader) return;
+    
+    // 如果正在加载，忽略新请求
+    if (asyncLoader->IsLoading()) {
+        TraceLog(LOG_INFO, "Already loading, ignoring new request");
+        return;
+    }
+    
+    // ===== 可选：如果已经加载完成，先重置 =====
+    if (asyncLoader->IsLoaded()) {
+        asyncLoader->ResetLoadedState();
+    }
+    
+    isLoadingRequested = true;
+    asyncLoader->StartLoadTexture(texturePath);
+    TraceLog(LOG_INFO, "Async load requested for: %s", texturePath.c_str());
+}
+
+bool Game::IsAsyncLoading() const {
+    return asyncLoader ? asyncLoader->IsLoading() : false;
+}
+
+float Game::GetAsyncLoadProgress() const {
+    return asyncLoader ? asyncLoader->GetProgress() : 0.0f;
+}
+
+// 更新异步加载状态
+void Game::UpdateAsyncLoading() {
+    if (!asyncLoader) return;
+    
+    Texture2D loadedTex;
+    if (asyncLoader->TryGetLoadedTexture(loadedTex)) {
+        if (loadedTex.id != 0) {
+            // 卸载旧纹理（如果存在）
+            if (loadedDemoTexture.id != 0) {
+                // 注意：不要在这里卸载，因为可能还在使用
+                // UnloadTexture(loadedDemoTexture);
+            }
+            loadedDemoTexture = loadedTex;
+            showLoadedTexture = true;
+            textureDisplayTimer = 3.0f;  // 显示3秒
+            
+            // 每次加载都用不同的颜色改变砖块
+            static int colorIndex = 0;
+            Color colors[] = {
+                GREEN,      // 第1次：绿色
+                RED,        // 第2次：红色
+                BLUE,       // 第3次：蓝色
+                YELLOW,     // 第4次：黄色
+                ORANGE,     // 第5次：橙色
+                PURPLE,     // 第6次：紫色
+                SKYBLUE,    // 第7次：天蓝
+                PINK        // 第8次：粉色
+            };
+            Color newColor = colors[colorIndex % 8];
+            colorIndex++;
+            
+            // 改变所有存在的砖块颜色
+            for (auto& brick : bricks) {
+                if (brick.IsActive()) {
+                    brick.SetColor(newColor);
+                }
+            }
+            
+            TraceLog(LOG_INFO, "Texture loaded successfully! Brick color changed (count: %d)", colorIndex);
+            
+            // 注意：这里不重置 asyncLoader 状态
+            // 让用户下次按 L 时通过 ForceRestart 重置
+        }
+    }
+    
+    // 更新纹理显示计时器
+    if (showLoadedTexture) {
+        textureDisplayTimer -= GetFrameTime();
+        if (textureDisplayTimer <= 0) {
+            showLoadedTexture = false;
+        }
+    }
+}
+
+// 绘制异步加载 UI
+void Game::DrawAsyncLoadingUI() {
+    if (asyncLoader && asyncLoader->IsLoading()) {
+        float progress = asyncLoader->GetProgress();
+        
+        // 半透明背景
+        DrawRectangle(0, 0, screenWidth, screenHeight, ColorAlpha(BLACK, 0.7f));
+        
+        // 动态加载文字（带闪烁效果）
+        float time = GetTime();
+        int dotCount = ((int)(time * 2) % 4);
+        std::string loadingText = "Loading";
+        for (int i = 0; i < dotCount; i++) loadingText += ".";
+        for (int i = dotCount; i < 3; i++) loadingText += " ";
+        
+        DrawText(loadingText.c_str(), screenWidth/2 - 60, screenHeight/2 - 60, 36, YELLOW);
+        
+        // 进度条
+        int barWidth = 300;
+        int barHeight = 20;
+        int barX = screenWidth/2 - barWidth/2;
+        int barY = screenHeight/2 - 10;
+        
+        DrawRectangle(barX, barY, barWidth, barHeight, DARKGRAY);
+        DrawRectangle(barX, barY, (int)(barWidth * progress), barHeight, LIME);
+        
+        // 进度百分比
+        DrawText(TextFormat("%d%%", (int)(progress * 100)), 
+                 screenWidth/2 - 20, barY - 25, 20, WHITE);
+        
+        DrawText("Loading texture in background...", 
+                 screenWidth/2 - 130, barY + 30, 16, GRAY);
+    }
+    
+    // 显示已加载的纹理
+    if (showLoadedTexture && loadedDemoTexture.id != 0) {
+        Rectangle texRect = { (float)(screenWidth - 100), 10.0f, 80.0f, 80.0f };
+        DrawTexturePro(loadedDemoTexture, 
+                      (Rectangle){0, 0, (float)loadedDemoTexture.width, (float)loadedDemoTexture.height},
+                      texRect, (Vector2){0, 0}, 0, WHITE);
+        
+        DrawText("TEXTURE LOADED!", screenWidth - 200, 95, 12, GREEN);
+        
+        float alpha = (sin(GetTime() * 5) + 1) / 2;
+        DrawText("BRICK COLORS CHANGED!", screenWidth/2 - 100, screenHeight - 40, 16, 
+                 ColorAlpha(GREEN, alpha));
+    }
 }

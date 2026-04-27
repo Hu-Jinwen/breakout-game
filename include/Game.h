@@ -10,6 +10,7 @@
 #include <string>
 #include <memory>
 #include <enet/enet.h>
+#include "AsyncResourceLoader.h"
 
 enum class GameState {
     MENU,
@@ -111,6 +112,14 @@ private:
     
     float opponentPaddleX;
     int opponentScore;
+
+     // 异步加载相关
+    AsyncResourceLoader* asyncLoader;
+    TextureCache textureCache;
+    Texture2D loadedDemoTexture;
+    bool showLoadedTexture;
+    float textureDisplayTimer;
+    bool isLoadingRequested;
     
 public:
     Game();
@@ -127,7 +136,12 @@ public:
     void AddExtraBalls(int count);
     void SlowDownBalls(float factor);
     void RestoreBallSpeed();
-    
+
+    // 任务相关方法
+    void RequestAsyncLoad(const std::string& texturePath);
+    bool IsAsyncLoading() const;
+    float GetAsyncLoadProgress() const;
+
 private:
     void LoadConfig(const std::string& path);
     void InitBricks();
@@ -171,6 +185,11 @@ private:
     void DrawExtraBalls();
 
     void UpdateNetwork();
+
+    void UpdateAsyncLoading();
+    void DrawAsyncLoadingUI();
+
+
 };
 
 #endif
