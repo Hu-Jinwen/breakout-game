@@ -15,6 +15,7 @@ public:
     void SetActive(bool a) { active = a; }
     Rectangle GetRect() const { return rect; }
     Color GetColor() const { return color; }
+    void SetColor(Color newColor) { color = newColor; }
 };
 
 #endif

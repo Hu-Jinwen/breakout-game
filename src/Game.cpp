@@ -56,6 +56,13 @@ Game::Game()
     , showLoadedTexture(false)
     , textureDisplayTimer(0.0f)
     , isLoadingRequested(false)
+    , networkSendTimer(0)
+    , networkReceiveTimeout(0)
+    , interpolatedBallX(0)
+    , interpolatedBallY(0)
+    , interpolationAlpha(0)
+    , currentLevel(1)      // 新增
+    , selectedLevel(1)   // 新增
 {
     brickColors[0] = RED;
     brickColors[1] = ORANGE;
@@ -68,6 +75,7 @@ Game::Game()
     
     memset(leaderboardEntries, 0, sizeof(leaderboardEntries));
     loadedDemoTexture = Texture2D{0};
+    InitLevels();  // 新增：初始化关卡配置
 }
 
 Game::~Game() {
@@ -171,6 +179,252 @@ void Game::InitBricks() {
     }
 }
 
+void Game::InitLevels() {
+    // ========== 第1关：简单 - 标准矩形布局 ==========
+    levels[0] = {
+        1,                          // levelNumber
+        "Forest Valley",            // levelName
+        "Easy",                     // difficulty
+        0.8f,                       // ballSpeedMultiplier - 较慢的球速
+        1.0f,                       // paddleSpeedMultiplier
+        5,                          // brickRows - 5行
+        8,                          // brickCols - 8列
+        1,                          // scoreMultiplier
+        0.25f,                      // powerUpDropRate - 道具掉落率25%
+        4,                          // maxLives - 4条命
+        {},                         // brickPositions
+        0                           // layoutType - 标准布局
+    };
+    
+    // ========== 第2关：中等 - 金字塔布局 ==========
+    levels[1] = {
+        2,                          // levelNumber
+        "Pyramid Peak",             // levelName
+        "Normal",                   // difficulty
+        1.0f,                       // ballSpeedMultiplier - 正常球速
+        1.0f,                       // paddleSpeedMultiplier
+        7,                          // brickRows - 7行
+        10,                         // brickCols - 10列
+        2,                          // scoreMultiplier - 2倍分数
+        0.35f,                      // powerUpDropRate - 道具掉落率35%
+        3,                          // maxLives - 3条命
+        {},                         // brickPositions
+        1                           // layoutType - 金字塔布局
+    };
+    
+    // ========== 第3关：困难 - 城堡/防御塔布局 ==========
+    levels[2] = {
+        3,                          // levelNumber
+        "Dark Castle",              // levelName
+        "Hard",                     // difficulty
+        1.25f,                      // ballSpeedMultiplier - 更快的球速
+        1.2f,                       // paddleSpeedMultiplier - 球拍更快
+        9,                          // brickRows - 9行
+        12,                         // brickCols - 12列
+        3,                          // scoreMultiplier - 3倍分数
+        0.45f,                      // powerUpDropRate - 道具掉落率45%
+        2,                          // maxLives - 2条命
+        {},                         // brickPositions
+        4                           // layoutType - 城堡布局
+    };
+}
+
+void Game::InitBricksByLayout(int layoutType) {
+    bricks.clear();
+    
+    switch (layoutType) {
+        case 0: // 标准矩形布局
+            for (int row = 0; row < brickRows; row++) {
+                Color rowColor = brickColors[row % 8];
+                for (int col = 0; col < brickCols; col++) {
+                    bricks.emplace_back(
+                        startX + col * (brickWidth + spacing),
+                        startY + row * (brickHeight + spacing),
+                        brickWidth, brickHeight,
+                        rowColor
+                    );
+                }
+            }
+            break;
+            
+        case 1: // 金字塔布局
+            for (int row = 0; row < brickRows; row++) {
+                Color rowColor = brickColors[row % 8];
+                int bricksInRow = brickCols - row;  // 每行递减1个砖块
+                int offsetX = (brickCols - bricksInRow) * (brickWidth + spacing) / 2;
+                
+                for (int col = 0; col < bricksInRow; col++) {
+                    bricks.emplace_back(
+                        startX + offsetX + col * (brickWidth + spacing),
+                        startY + row * (brickHeight + spacing),
+                        brickWidth, brickHeight,
+                        rowColor
+                    );
+                }
+            }
+            break;
+            
+        case 2: // 菱形布局
+            for (int row = 0; row < brickRows; row++) {
+                Color rowColor = brickColors[row % 8];
+                int bricksInRow;
+                int offsetX;
+                
+                // 菱形：先增加后减少
+                int halfRows = brickRows / 2;
+                if (row <= halfRows) {
+                    bricksInRow = 3 + row * 2;
+                } else {
+                    bricksInRow = 3 + (brickRows - row - 1) * 2;
+                }
+                
+                if (bricksInRow > brickCols) bricksInRow = brickCols;
+                
+                offsetX = (brickCols - bricksInRow) * (brickWidth + spacing) / 2;
+                
+                for (int col = 0; col < bricksInRow; col++) {
+                    bricks.emplace_back(
+                        startX + offsetX + col * (brickWidth + spacing),
+                        startY + row * (brickHeight + spacing),
+                        brickWidth, brickHeight,
+                        rowColor
+                    );
+                }
+            }
+            break;
+            
+        case 3: // 波浪布局
+            for (int row = 0; row < brickRows; row++) {
+                Color rowColor = brickColors[row % 8];
+                int waveOffset = (int)(sin(row * 0.8f) * 3);
+                
+                for (int col = 0; col < brickCols; col++) {
+                    // 波浪形空缺
+                    int colWave = (int)(cos(col * 0.8f) * 2);
+                    if (row == 2 + colWave || row == 4 + colWave || row == 6 - colWave) {
+                        continue;  // 跳过某些位置形成波浪图案
+                    }
+                    
+                    bricks.emplace_back(
+                        startX + col * (brickWidth + spacing) + waveOffset * 8,
+                        startY + row * (brickHeight + spacing),
+                        brickWidth, brickHeight,
+                        rowColor
+                    );
+                }
+            }
+            break;
+            
+        case 4: // 城堡/防御塔布局 - 两侧高中间低
+            for (int row = 0; row < brickRows; row++) {
+                Color rowColor = brickColors[row % 8];
+                for (int col = 0; col < brickCols; col++) {
+                    bool shouldPlace = false;
+                    
+                    // 左侧塔楼
+                    if (col < 3 && row < 6) {
+                        shouldPlace = true;
+                    }
+                    // 右侧塔楼
+                    else if (col >= brickCols - 3 && row < 6) {
+                        shouldPlace = true;
+                    }
+                    // 中间城墙 - 较低
+                    else if (col >= 3 && col < brickCols - 3 && row < 3) {
+                        shouldPlace = true;
+                    }
+                    // 城门缺口
+                    else if (col >= brickCols/2 - 2 && col <= brickCols/2 + 2 && row == 3) {
+                        shouldPlace = false;
+                    }
+                    // 上层砖块
+                    else if (row >= 6 && (col % 2 == 0)) {
+                        shouldPlace = true;
+                    }
+                    
+                    if (shouldPlace) {
+                        bricks.emplace_back(
+                            startX + col * (brickWidth + spacing),
+                            startY + row * (brickHeight + spacing),
+                            brickWidth, brickHeight,
+                            rowColor
+                        );
+                    }
+                }
+            }
+            break;
+            
+        default: // 默认标准布局
+            for (int row = 0; row < brickRows; row++) {
+                Color rowColor = brickColors[row % 8];
+                for (int col = 0; col < brickCols; col++) {
+                    bricks.emplace_back(
+                        startX + col * (brickWidth + spacing),
+                        startY + row * (brickHeight + spacing),
+                        brickWidth, brickHeight,
+                        rowColor
+                    );
+                }
+            }
+            break;
+    }
+}
+
+void Game::LoadLevel(int level) {
+    if (level < 1 || level > 3) return;
+    
+    currentLevel = level;
+    const LevelConfig& cfg = levels[level - 1];
+    
+    // 应用关卡配置
+    initialLives = cfg.maxLives;
+    lives = initialLives;
+    score = 0;
+    gameTime = 0;
+    
+    brickRows = cfg.brickRows;
+    brickCols = cfg.brickCols;
+    
+    // 根据砖块数量调整间距
+    float totalWidth = brickCols * brickWidth + (brickCols - 1) * spacing;
+    if (totalWidth > screenWidth - 100) {
+        brickWidth = (screenWidth - 100 - (brickCols - 1) * spacing) / brickCols;
+    }
+    startX = (screenWidth - brickCols * brickWidth - (brickCols - 1) * spacing) / 2;
+    
+    // 球速倍率
+    ballSpeedMultiplier = cfg.ballSpeedMultiplier;
+    
+    // 球拍速度
+    paddleSpeed = paddleSpeed * cfg.paddleSpeedMultiplier;
+    paddleBoostSpeed = paddleBoostSpeed * cfg.paddleSpeedMultiplier;
+    
+    // 分数倍率
+    scorePerBrick = 10 * cfg.scoreMultiplier;
+    
+    // 道具掉落率
+    powerUpDropRate = cfg.powerUpDropRate;
+    
+    // 根据布局类型创建砖块
+    InitBricksByLayout(cfg.layoutType);
+    
+    // 重置球和球拍
+    ball = Ball({(float)screenWidth/2, (float)screenHeight/2}, {0, 0}, ballRadius);
+    ball.SetLaunched(false);
+    
+    paddle = Paddle(screenWidth/2 - paddleWidth/2, screenHeight - 50, paddleWidth, paddleHeight);
+    
+    // 清除道具和效果
+    powerUps.clear();
+    activeEffects.clear();
+    extraBalls.clear();
+    particles.clear();
+    
+    TraceLog(LOG_INFO, "Loaded Level %d: %s (%s)", level, cfg.levelName.c_str(), cfg.difficulty.c_str());
+    TraceLog(LOG_INFO, "  Rows: %d, Cols: %d, Lives: %d, Score Multiplier: %d", 
+             brickRows, brickCols, initialLives, cfg.scoreMultiplier);
+}
+
 void Game::HandleInput() {
     if (IsKeyPressed(KEY_R)) {
         ResetGame();
@@ -181,8 +435,7 @@ void Game::HandleInput() {
     switch (currentState) {
         case GameState::MENU:
             if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_SPACE)) {
-                ChangeState(GameState::PLAYING);
-                ResetGame();
+                ChangeState(GameState::LEVEL_SELECT);
             }
             if (IsKeyPressed(KEY_L)) {
                 ChangeState(GameState::LEADERBOARD);
@@ -197,7 +450,28 @@ void Game::HandleInput() {
             }
 
             break;
-            
+        
+        case GameState::LEVEL_SELECT:  // 新增关卡选择处理
+            if (IsKeyPressed(KEY_ONE) || IsKeyPressed(KEY_KP_1)) {
+                selectedLevel = 1;
+                LoadLevel(selectedLevel);
+                ChangeState(GameState::PLAYING);
+            }
+            if (IsKeyPressed(KEY_TWO) || IsKeyPressed(KEY_KP_2)) {
+                selectedLevel = 2;
+                LoadLevel(selectedLevel);
+                ChangeState(GameState::PLAYING);
+            }
+            if (IsKeyPressed(KEY_THREE) || IsKeyPressed(KEY_KP_3)) {
+                selectedLevel = 3;
+                LoadLevel(selectedLevel);
+                ChangeState(GameState::PLAYING);
+            }
+            if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_BACKSPACE)) {
+                ChangeState(GameState::MENU);
+            }
+            break;    
+
         case GameState::PLAYING: {
             if (IsKeyPressed(KEY_P)) {
                 ChangeState(GameState::PAUSED);
@@ -268,6 +542,9 @@ void Game::OnEnterState(GameState state) {
         case GameState::MENU:
             TraceLog(LOG_INFO, "Entering MENU state");
             break;
+        case GameState::LEVEL_SELECT:  // 新增
+            TraceLog(LOG_INFO, "Entering LEVEL_SELECT state");
+            break;
         case GameState::PLAYING:
             TraceLog(LOG_INFO, "Entering PLAYING state");
             break;
@@ -331,29 +608,45 @@ void Game::UpdateNetwork() {
     ENetEvent event;
     float now = GetTime();
     
+    // 处理网络事件
     while (enet_host_service(netHost, &event, 0) > 0) {
         switch (event.type) {
             case ENET_EVENT_TYPE_CONNECT:
                 TraceLog(LOG_INFO, "Client connected to server!");
                 isConnected = true;
-                netPeer = event.peer;
+                if (!isHost) {
+                    netPeer = event.peer;
+                }
+                // 重置网络状态
+                lastRecvTime = now;
+                networkReceiveTimeout = 0;
                 break;
                 
             case ENET_EVENT_TYPE_RECEIVE:
                 if (isHost) {
+                    // 主机：接收客户端球拍位置
                     if (event.packet->dataLength == sizeof(float)) {
                         float clientPaddleX;
                         memcpy(&clientPaddleX, event.packet->data, sizeof(float));
                         opponentPaddleX = clientPaddleX;
+                        TraceLog(LOG_DEBUG, "Received opponent paddle: %.1f", opponentPaddleX);
                     }
                 } else {
+                    // 客户端：接收游戏状态
                     if (event.packet->dataLength == sizeof(NetworkGameState)) {
+                        // 保存当前状态作为插值起点
                         netCurrentState = netTargetState;
                         lastStateTime = lastRecvTime;
                         
+                        // 读取新状态
                         memcpy(&netTargetState, event.packet->data, sizeof(NetworkGameState));
                         nextStateTime = now;
                         lastRecvTime = now;
+                        networkReceiveTimeout = 0;
+                        
+                        TraceLog(LOG_DEBUG, "Received game state - Ball: (%.1f, %.1f), Speed: (%.1f, %.1f)", 
+                                 netTargetState.ballX, netTargetState.ballY,
+                                 netTargetState.ballSpeedX, netTargetState.ballSpeedY);
                     }
                 }
                 enet_packet_destroy(event.packet);
@@ -362,6 +655,7 @@ void Game::UpdateNetwork() {
             case ENET_EVENT_TYPE_DISCONNECT:
                 TraceLog(LOG_WARNING, "Peer disconnected!");
                 isConnected = false;
+                netPeer = nullptr;
                 break;
                 
             default:
@@ -369,35 +663,54 @@ void Game::UpdateNetwork() {
         }
     }
     
-    // 主机发送状态
-    if (isHost && isConnected && netPeer && ball.IsLaunched()) {
-        if (now - lastSendTime >= 1.0f / 30.0f) {
-            NetworkGameState state;
-            state.ballX = ball.GetPosition().x;
-            state.ballY = ball.GetPosition().y;
-            state.ballSpeedX = ball.GetSpeed().x;
-            state.ballSpeedY = ball.GetSpeed().y;
-            state.paddle1X = paddle.GetRect().x;
-            state.paddle2X = opponentPaddleX;
-            state.score1 = score;
-            state.score2 = opponentScore;
-            
-            ENetPacket* packet = enet_packet_create(&state, sizeof(state), 
-                                                     ENET_PACKET_FLAG_UNSEQUENCED);
-            enet_peer_send(netPeer, 0, packet);
-            lastSendTime = now;
+    // 检查连接超时（5秒无数据）
+    if (isConnected && (now - lastRecvTime > 5.0f)) {
+        TraceLog(LOG_WARNING, "Network timeout - connection lost!");
+        isConnected = false;
+    }
+    
+    // ----- 主机发送游戏状态 -----
+    if (isHost && isConnected && netPeer) {
+        if (ball.IsLaunched()) {
+            networkSendTimer += GetFrameTime();
+            if (networkSendTimer >= 1.0f / 30.0f) {  // 每秒30次
+                SendGameStateToClient();
+                networkSendTimer = 0;
+            }
         }
     }
     
-    // 客户端发送板位置
-    if (!isHost && isConnected && netPeer && ball.IsLaunched()) {
-        if (now - lastSendTime >= 1.0f / 30.0f) {
+    // ----- 客户端发送球拍位置 -----
+    if (!isHost && isConnected && netPeer) {
+        networkSendTimer += GetFrameTime();
+        if (networkSendTimer >= 1.0f / 30.0f) {
             float myPaddleX = paddle.GetRect().x;
             ENetPacket* packet = enet_packet_create(&myPaddleX, sizeof(myPaddleX), 
                                                      ENET_PACKET_FLAG_UNSEQUENCED);
             enet_peer_send(netPeer, 0, packet);
-            lastSendTime = now;
+            networkSendTimer = 0;
+            TraceLog(LOG_DEBUG, "Sent paddle position: %.1f", myPaddleX);
         }
+    }
+    
+    // ----- 客户端插值更新 -----
+    if (!isHost && isConnected && lastRecvTime > 0) {
+        double nowTime = GetTime();
+        if (nextStateTime > lastStateTime) {
+            interpolationAlpha = (nowTime - lastStateTime) / (nextStateTime - lastStateTime);
+            interpolationAlpha = std::clamp(interpolationAlpha, 0.0f, 1.0f);
+        } else {
+            interpolationAlpha = 1.0f;
+        }
+        
+        // 线性插值球位置
+        interpolatedBallX = netCurrentState.ballX * (1 - interpolationAlpha) + 
+                            netTargetState.ballX * interpolationAlpha;
+        interpolatedBallY = netCurrentState.ballY * (1 - interpolationAlpha) + 
+                            netTargetState.ballY * interpolationAlpha;
+        
+        // 更新对手分数
+        opponentScore = netTargetState.score2;
     }
 }
 
@@ -473,27 +786,8 @@ void Game::CheckWinCondition() {
 }
 
 void Game::ResetGame() {
-    lives = initialLives;
-    score = 0;
-    gameTime = 0;
-    playerRank = 0;
-    ballSpeedMultiplier = 1.0f;
-    isSlowed = false;
-    
-    // 清除道具和粒子
-    powerUps.clear();
-    activeEffects.clear();
-    extraBalls.clear();
-    particles.clear();
-    
-    ball = Ball({(float)screenWidth/2, (float)screenHeight/2}, {0, 0}, ballRadius);
-    ball.SetLaunched(false);
-    
-    paddle = Paddle(screenWidth/2 - paddleWidth/2, screenHeight - 50, paddleWidth, paddleHeight);
-    
-    InitBricks();
-    
-    TraceLog(LOG_INFO, "Game reset");
+    LoadLevel(selectedLevel);  // 使用选中的关卡
+    ChangeState(GameState::PLAYING);
 }
 
 float Game::CalculateMultiplier() {
@@ -874,7 +1168,10 @@ void Game::Update() {
     UpdateAsyncLoading();
     
     if (currentState == GameState::PLAYING) {
-        UpdateGame();
+        if (isHost || !isConnected) {
+            UpdateGame();
+        }
+
         UpdateEffects(GetFrameTime());
         UpdateParticles(GetFrameTime());
         UpdateExtraBalls(GetFrameTime());
@@ -896,32 +1193,42 @@ void Game::Draw() {
             DrawMenu();
             DrawAsyncLoadingUI();
             break;
-            
+        
+        case GameState::LEVEL_SELECT:  // 新增
+            DrawLevelSelect();
+            break;    
+
         case GameState::PLAYING:
-            // 客户端插值绘制
-            if (!isHost && isConnected && ball.IsLaunched()) {
-                double now = GetTime();
-                double t = 1.0;
-                
-                if (nextStateTime > lastStateTime && lastStateTime > 0) {
-                    t = (now - lastStateTime) / (nextStateTime - lastStateTime);
-                    t = std::clamp(t, 0.0, 1.0);
-                }
-                
-                float drawX = netCurrentState.ballX * (1 - t) + netTargetState.ballX * t;
-                float drawY = netCurrentState.ballY * (1 - t) + netTargetState.ballY * t;
-                
-                DrawCircleV({drawX, drawY}, ball.GetRadius(), RED);
-                
-                float oppPaddleX = netTargetState.paddle2X;
-                if (oppPaddleX > 0) {
-                    Rectangle oppRect = { oppPaddleX, paddle.GetRect().y, 
-                                          paddle.GetRect().width, paddle.GetRect().height };
+        // 客户端插值绘制
+        if (!isHost && isConnected && ball.IsLaunched()) {
+            // 使用插值位置绘制球
+            DrawCircleV({interpolatedBallX, interpolatedBallY}, ball.GetRadius(), RED);
+        
+            // 绘制对手球拍（使用接收到的主机球拍位置）
+            if (netTargetState.paddle1X > 0) {
+                Rectangle oppRect = { netTargetState.paddle1X, 
+                                          paddle.GetRect().y, 
+                                          paddle.GetRect().width, 
+                                          paddle.GetRect().height };
                     DrawRectangleRec(oppRect, ColorAlpha(BLUE, 0.6f));
                     DrawRectangleLinesEx(oppRect, 2, DARKBLUE);
+                    
+                    // 显示对手分数
+                    DrawText(TextFormat("Opponent: %d", netTargetState.score1), 
+                                 screenWidth - 110, 12, 16, ColorAlpha(WHITE, 0.8f));
                 }
+        
+                // 显示网络延迟指示器
+                float latency = GetTime() - lastRecvTime;
+                Color latencyColor = (latency < 0.1f) ? GREEN : (latency < 0.2f) ? YELLOW : RED;
+                DrawCircle(screenWidth - 15, 15, 6, latencyColor);
+        
+                // 自己的球拍
+                paddle.Draw();
             } else {
+                // 单机模式或主机模式的正常绘制
                 ball.Draw();
+                paddle.Draw();
             }
             
             DrawExtraBalls();
@@ -1020,6 +1327,39 @@ int Game::AddToLeaderboard(const char* name, int score) {
     return pos + 1;
 }
 
+// ========== 网络状态同步实现 ==========
+
+void Game::SendGameStateToClient() {
+    if (!netPeer) return;
+    
+    NetworkGameState state;
+    
+    // 主机球的实际位置
+    Vector2 ballPos = ball.GetPosition();
+    Vector2 ballSpeed = ball.GetSpeed();
+    
+    state.ballX = ballPos.x;
+    state.ballY = ballPos.y;
+    state.ballSpeedX = ballSpeed.x;
+    state.ballSpeedY = ballSpeed.y;
+    state.paddle1X = paddle.GetRect().x;      // 主机的球拍
+    state.paddle2X = opponentPaddleX;          // 客户端的球拍
+    state.score1 = score;                      // 主机的分数
+    state.score2 = opponentScore;              // 客户端的分数
+    
+    ENetPacket* packet = enet_packet_create(&state, sizeof(state), 
+                                             ENET_PACKET_FLAG_UNSEQUENCED);
+    enet_peer_send(netPeer, 0, packet);
+    
+    TraceLog(LOG_DEBUG, "Sent game state - Ball: (%.1f, %.1f), Score: %d vs %d", 
+             state.ballX, state.ballY, state.score1, state.score2);
+}
+
+void Game::ReceiveGameStateFromHost() {
+    // 这个方法现在合并到 UpdateNetwork() 中
+    // 保留接口以备需要
+}
+
 void Game::Shutdown() {
     SaveLeaderboard();
 
@@ -1034,9 +1374,20 @@ void Game::Shutdown() {
         UnloadTexture(loadedDemoTexture);
     }
 
-    // ===== 新增：释放网络资源 =====
+    // 释放网络资源
     if (netHost) {
+        if (netPeer) {
+            enet_peer_disconnect(netPeer, 0);
+            // 等待断开完成
+            ENetEvent event;
+            while (enet_host_service(netHost, &event, 3000) > 0) {
+                if (event.type == ENET_EVENT_TYPE_DISCONNECT) {
+                    break;
+                }
+            }
+        }
         enet_host_destroy(netHost);
+        netHost = nullptr;
     }
     enet_deinitialize();
     
@@ -1174,4 +1525,63 @@ void Game::DrawAsyncLoadingUI() {
         DrawText("BRICK COLORS CHANGED!", screenWidth/2 - 100, screenHeight - 40, 16, 
                  ColorAlpha(GREEN, alpha));
     }
+}
+
+void Game::DrawLevelSelect() {
+    DrawRectangle(0, 0, screenWidth, screenHeight, ColorAlpha(BLACK, 0.9f));
+    
+    // 标题
+    DrawText("SELECT LEVEL", screenWidth/2 - 120, 60, 40, YELLOW);
+    DrawText("Choose your difficulty", screenWidth/2 - 100, 110, 20, GRAY);
+    
+    // 关卡卡片位置
+    int cardWidth = 200;
+    int cardHeight = 250;
+    int startCardX = (screenWidth - (cardWidth * 3 + 40)) / 2;
+    int cardY = 160;
+    
+    // 关卡颜色
+    Color colors[3] = { GREEN, ORANGE, RED };
+    const char* difficulties[3] = { "EASY", "NORMAL", "HARD" };
+    
+    for (int i = 0; i < 3; i++) {
+        int cardX = startCardX + i * (cardWidth + 20);
+        const LevelConfig& level = levels[i];
+        
+        // 卡片背景
+        Color cardColor = ColorAlpha(colors[i], 0.3f);
+        if (selectedLevel == i + 1) {
+            cardColor = ColorAlpha(colors[i], 0.6f);
+            DrawRectangleLines(cardX - 4, cardY - 4, cardWidth + 8, cardHeight + 8, GOLD);
+        }
+        
+        DrawRectangle(cardX, cardY, cardWidth, cardHeight, cardColor);
+        DrawRectangleLines(cardX, cardY, cardWidth, cardHeight, colors[i]);
+        
+        // 关卡编号和名称
+        DrawText(TextFormat("%d", i + 1), cardX + cardWidth/2 - 15, cardY + 20, 30, colors[i]);
+        DrawText(level.levelName.c_str(), cardX + cardWidth/2 - MeasureText(level.levelName.c_str(), 18)/2, 
+                 cardY + 60, 18, WHITE);
+        
+        // 难度
+        DrawText(difficulties[i], cardX + cardWidth/2 - 30, cardY + 90, 16, colors[i]);
+        
+        // 参数显示
+        DrawText(TextFormat("Ball Speed: x%.0f%%", level.ballSpeedMultiplier * 100), 
+                 cardX + 15, cardY + 130, 12, GRAY);
+        DrawText(TextFormat("Paddle Speed: x%.0f%%", level.paddleSpeedMultiplier * 100), 
+                 cardX + 15, cardY + 155, 12, GRAY);
+        DrawText(TextFormat("Lives: %d", level.maxLives), 
+                 cardX + 15, cardY + 180, 12, GRAY);
+        DrawText(TextFormat("Score: x%d", level.scoreMultiplier), 
+                 cardX + 15, cardY + 205, 12, GRAY);
+        
+        // 预览图标
+        DrawText(TextFormat("[%d] Press %d", i + 1, i + 1), 
+                 cardX + cardWidth/2 - 45, cardY + cardHeight - 30, 14, colors[i]);
+    }
+    
+    // 操作说明
+    DrawText("Press 1, 2 or 3 to select level", screenWidth/2 - 140, screenHeight - 80, 16, SKYBLUE);
+    DrawText("Press ESC to return to menu", screenWidth/2 - 110, screenHeight - 50, 14, GRAY);
 }

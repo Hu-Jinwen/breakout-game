@@ -14,11 +14,28 @@
 
 enum class GameState {
     MENU,
+    LEVEL_SELECT,  // 新增：关卡选择界面
     PLAYING,
     PAUSED,
     GAMEOVER,
     VICTORY,
     LEADERBOARD
+};
+
+// 关卡数据结构
+struct LevelConfig {
+    int levelNumber;
+    std::string levelName;
+    std::string difficulty;
+    float ballSpeedMultiplier;      // 球速倍率
+    float paddleSpeedMultiplier;    // 球拍速度倍率
+    int brickRows;
+    int brickCols;
+    int scoreMultiplier;             // 分数倍率
+    float powerUpDropRate;           // 道具掉落率
+    int maxLives;                    // 初始生命值
+    std::vector<std::pair<int, int>> brickPositions; // 自定义砖块位置（用于特殊布局）
+    int layoutType;                  // 0=标准, 1=菱形, 2=金字塔, 3=波浪, 4=城堡
 };
 
 // 网络同步用的结构体（改个名字，避免冲突）
@@ -70,6 +87,11 @@ private:
     int deathPenalty;
     float powerUpDropRate;
     
+    // 关卡系统
+    int currentLevel;
+    LevelConfig levels[3];
+    int selectedLevel;
+    
     // 道具系统
     std::vector<PowerUp> powerUps;
     std::vector<std::unique_ptr<PowerUpEffect>> activeEffects;
@@ -113,7 +135,7 @@ private:
     float opponentPaddleX;
     int opponentScore;
 
-     // 异步加载相关
+    // 异步加载相关
     AsyncResourceLoader* asyncLoader;
     TextureCache textureCache;
     Texture2D loadedDemoTexture;
@@ -142,9 +164,23 @@ public:
     bool IsAsyncLoading() const;
     float GetAsyncLoadProgress() const;
 
+    // 网络同步相关方法
+    void SendGameStateToClient();
+    void ReceiveGameStateFromHost();
+    float GetOpponentPaddleX() const { return opponentPaddleX; }
+    int GetOpponentScore() const { return opponentScore; }
+    bool IsNetworkGame() const { return netHost != nullptr && isConnected; }
+    bool IsHost() const { return isHost; }
+
+    // 关卡系统方法
+    void InitLevels();
+    void LoadLevel(int level);
+    void DrawLevelSelect();
+
 private:
     void LoadConfig(const std::string& path);
     void InitBricks();
+    void InitBricksByLayout(int layoutType);  // 新增：根据布局类型创建砖块
     void LoadLeaderboard();
     void SaveLeaderboard();
     
@@ -189,7 +225,14 @@ private:
     void UpdateAsyncLoading();
     void DrawAsyncLoadingUI();
 
-
+    // 网络同步定时器
+    float networkSendTimer;
+    float networkReceiveTimeout;
+    
+    // 客户端插值相关
+    float interpolatedBallX;
+    float interpolatedBallY;
+    float interpolationAlpha;
 };
 
 #endif
