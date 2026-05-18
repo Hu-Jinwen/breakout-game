@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "level": 2,
+  "name": "Pyramid Peak",
+  "difficulty": "Normal",
+  "ball_speed_multiplier": 1.0,
+  "paddle_speed_multiplier": 1.0,
+  "score_multiplier": 2,
+  "max_lives": 3,
+  "powerup_drop_rate": 0.35,
+  "bricks": {
+    "rows": 7,
+    "cols": 10,
+    "width": 65,
+    "height": 25,
+    "start_x": 45,
+    "start_y": 80,
+    "spacing": 5,
+    "layout_type": 2,
+    "layout_data": [
+      [0,0,0,0,1,1,0,0,0,0],
+      [0,0,0,1,1,1,1,0,0,0],
+      [0,0,1,1,1,1,1,1,0,0],
+      [0,1,1,1,1,1,1,1,1,0],
+      [1,1,1,1,1,1,1,1,1,1],
+      [1,1,1,1,1,1,1,1,1,1],
+      [1,1,1,1,1,1,1,1,1,1]
+    ]
+  }
+}

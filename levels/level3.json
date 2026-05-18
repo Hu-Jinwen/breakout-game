@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "level": 3,
+  "name": "Dark Castle",
+  "difficulty": "Hard",
+  "ball_speed_multiplier": 1.25,
+  "paddle_speed_multiplier": 1.2,
+  "score_multiplier": 3,
+  "max_lives": 2,
+  "powerup_drop_rate": 0.45,
+  "bricks": {
+    "rows": 9,
+    "cols": 12,
+    "width": 60,
+    "height": 25,
+    "start_x": 40,
+    "start_y": 80,
+    "spacing": 5,
+    "layout_type": 4,
+    "layout_data": [
+      [1,1,1,1,0,0,0,0,1,1,1,1],
+      [1,1,1,0,0,0,0,0,0,1,1,1],
+      [1,1,0,0,0,0,0,0,0,0,1,1],
+      [1,0,0,0,0,0,0,0,0,0,0,1],
+      [0,0,0,0,0,0,0,0,0,0,0,0],
+      [0,1,1,0,0,0,0,0,0,1,1,0],
+      [1,1,1,1,0,0,0,0,1,1,1,1],
+      [1,1,1,1,1,0,0,1,1,1,1,1],
+      [1,1,1,1,1,1,1,1,1,1,1,1]
+    ]
+  }
+}

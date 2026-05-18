@@ -6,6 +6,31 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(raylib REQUIRED)
 
+# 新增：查找 nlohmann_json
+find_package(nlohmann_json CONFIG QUIET)
+if(NOT nlohmann_json_FOUND)
+    # 如果没找到，尝试从系统查找
+    find_path(NLOHMANN_JSON_INCLUDE_DIR "nlohmann/json.hpp")
+    if(NLOHMANN_JSON_INCLUDE_DIR)
+        add_library(nlohmann_json INTERFACE)
+        target_include_directories(nlohmann_json INTERFACE ${NLOHMANN_JSON_INCLUDE_DIR})
+    else()
+        # 如果都没有，下载（需要联网）
+        include(FetchContent)
+        FetchContent_Declare(
+            json
+            URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.hpp
+            DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+        )
+        FetchContent_GetProperties(json)
+        if(NOT json_POPULATED)
+            FetchContent_Populate(json)
+            add_library(nlohmann_json INTERFACE)
+            target_include_directories(nlohmann_json INTERFACE ${json_SOURCE_DIR})
+        endif()
+    endif()
+endif()
+
 # ENet 配置
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(ENET REQUIRED libenet)

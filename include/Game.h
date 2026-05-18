@@ -11,10 +11,14 @@
 #include <memory>
 #include <enet/enet.h>
 #include "AsyncResourceLoader.h"
+#include <fstream>      
+#include <nlohmann/json.hpp>  
+
+using json = nlohmann::json;  
 
 enum class GameState {
     MENU,
-    LEVEL_SELECT,  // 新增：关卡选择界面
+    LEVEL_SELECT,  
     PLAYING,
     PAUSED,
     GAMEOVER,
@@ -99,16 +103,40 @@ private:
     float ballSpeedMultiplier;
     bool isSlowed;
     
-    // 粒子系统
-    struct Particle {
+    // ========== 优化：对象池粒子系统（替换原std::vector<Particle>） ==========
+    static constexpr int MAX_PARTICLES = 500;  // 最大粒子数
+    
+    struct ParticlePooled {
         Vector2 position;
         Vector2 velocity;
         Color color;
         float life;
         float maxLife;
+        bool active;  // 是否激活
     };
-    std::vector<Particle> particles;
     
+    ParticlePooled pooledParticles[MAX_PARTICLES];  // 静态数组，无动态分配
+    int activeParticleCount;
+    
+    // ========== 优化：空间划分（网格法） ==========
+    struct GridCell {
+        std::vector<int> brickIndices;  // 存储砖块索引
+    };
+    
+    static constexpr int GRID_COLS = 12;   // 网格列数
+    static constexpr int GRID_ROWS = 8;    // 网格行数
+    static constexpr float CELL_WIDTH = 800.0f / GRID_COLS;   // 约66.7px
+    static constexpr float CELL_HEIGHT = 600.0f / GRID_ROWS;  // 75px
+    
+    GridCell grid[GRID_COLS][GRID_ROWS];
+    bool useSpatialPartition;  // 是否启用空间划分（可用于对比测试）
+    
+    // ========== 优化：性能测量 ==========
+    double lastFrameTime;
+    float collisionTimeMs;
+    float particleTimeMs;
+    float totalFrameTimeMs;
+
     // 排行榜
     struct ScoreEntry {
         char name[32];
@@ -142,7 +170,17 @@ private:
     bool showLoadedTexture;
     float textureDisplayTimer;
     bool isLoadingRequested;
+
+     // ========== 新增：存档系统 ==========
+    bool SaveGame(const std::string& filename = "savegame.json");
+    bool LoadGame(const std::string& filename = "savegame.json");
+    bool SaveExists() const;
+    json LoadJSONFromFile(const std::string& path);
+    void InitBricksFromJSON(const json& config);
     
+    // 新增：游戏启动时的存档检测方法
+    void CheckForSaveFile();
+
 public:
     Game();
     ~Game();
@@ -213,11 +251,29 @@ private:
     void UpdateEffects(float dt);
     void UpdateExtraBalls(float dt);
     
-    // 粒子系统方法
+    // ========== 优化：对象池粒子系统方法（替换原粒子方法） ==========
+    void SpawnParticlePooled(Vector2 pos, Vector2 vel, Color color, float lifetime);
+    void UpdateParticlesPooled(float dt);
+    void DrawParticlesPooled();
+    
+    // ========== 优化：空间划分方法 ==========
+    void BuildSpatialGrid();                    // 构建空间网格
+    void GetNearbyBricks(const Ball& ball, std::vector<int>& outIndices);  // 获取相邻网格的砖块
+    
+    // ========== 优化：性能测量 ==========
+    void BeginPerformanceMeasure();
+    void EndPerformanceMeasure(const char* operationName);
+    void DrawPerformanceUI();  // 在屏幕上显示性能数据
+
+    // 原粒子系统方法（已废弃，保留声明以防编译错误，实际不再使用）
+    // void SpawnBrickParticles(Rectangle brickRect, Color brickColor);
+    // void SpawnPowerUpGlow(float x, float y, Color color);
+    // void UpdateParticles(float dt);
+    // void DrawParticles();
+    
+    // 新版本粒子生成方法（使用对象池）
     void SpawnBrickParticles(Rectangle brickRect, Color brickColor);
     void SpawnPowerUpGlow(float x, float y, Color color);
-    void UpdateParticles(float dt);
-    void DrawParticles();
     void DrawExtraBalls();
 
     void UpdateNetwork();
