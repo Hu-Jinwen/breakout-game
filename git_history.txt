@@ -1,7 +1,0 @@
-* bd63cb2 (HEAD -> master, feature/unit-tests) test: 更新单元测试
-* f674fe9 (feature/config-file) feat: 增强配置加载功能，添加配置日志输出
-* 35805f2 (feature/game-state) feat: 初始提交 - 完成Game类重构和状态机
-* 11facb3 test: 修复单元测试，所有测试通过
-* 5734223 feat: 添加生命值和分数
-* 04e1e57 (feature/collision) feat: 实现球与板碰撞
-* d5dc0c2 feat: 初始化打砖块游戏，实现基础碰撞检测和游戏规则
