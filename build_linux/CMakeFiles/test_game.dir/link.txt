@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/test_game.dir/tests/test.cpp.o CMakeFiles/test_game.dir/src/Game.cpp.o CMakeFiles/test_game.dir/src/Ball.cpp.o CMakeFiles/test_game.dir/src/Paddle.cpp.o CMakeFiles/test_game.dir/src/Brick.cpp.o CMakeFiles/test_game.dir/src/PowerUp.cpp.o -o test_game  /usr/local/lib/libraylib.a -lm /usr/lib/x86_64-linux-gnu/libX11.so /usr/lib/x86_64-linux-gnu/libXext.so 

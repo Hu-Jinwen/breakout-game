@@ -11,6 +11,8 @@
 // - 管理小球的位置和速度
 // - 处理与边界、挡板、砖块的碰撞
 // - 支持多球道具效果（多个Ball实例共存）
+// - 支持主球/副球区分（主球漏掉扣命，副球漏掉只扣分）
+// - 支持重球合并机制（两个球碰撞后合为一个重球，可穿透砖块）
 //
 // 主要用法：
 //   Ball ball({400, 500}, {0, 0}, 8);
@@ -32,6 +34,14 @@ private:
     Vector2 speed;      // 小球当前速度向量（像素/秒），X和Y方向独立
     float radius;       // 小球半径（像素），用于碰撞检测和绘制
     bool launched;      // true=已发射（独立运动），false=未发射（跟随挡板）
+    
+    // ========== 新增：多球策略性相关 ==========
+    bool isMainBall;        // true=主球（白色），false=副球（彩色）
+                            // 主球漏掉扣生命，副球漏掉只扣分
+    bool isHeavyBall;       // true=重球，可穿透砖块
+                            // 两个普通球碰撞后合并生成重球
+    int splitCount;         // 分裂计数器：球已经分裂过的次数
+                            // 限制最多分裂2次，防止无限分裂
     
     // 物理参数（从config.json加载）
     float gravity;      // 重力加速度，每帧累加到speed.y，模拟真实物理下落
@@ -58,7 +68,8 @@ public:
     void Move();
     
     // 绘制小球
-    // 绘制红色圆形，发射后显示速度方向指示线
+    // 主球（白色）带光晕，副球（根据速度方向变色）
+    // 重球（带金色光晕和穿透特效）
     // 未发射时闪烁显示"PRESS SPACE"提示文字
     void Draw();
     
@@ -96,6 +107,13 @@ public:
     // 参数rect：矩形的边界框
     void BounceFromRect(Rectangle rect);
     
+    // ========== 新增：重球穿透碰撞处理 ==========
+    // 重球与矩形碰撞处理（不反转速度，直接穿透砖块）
+    // 重球击中砖块时，砖块被击碎但球继续前进
+    // 返回值：true=发生碰撞并处理，false=未碰撞
+    // 参数rect：矩形的边界框
+    bool HeavyBallBounceFromRect(Rectangle rect);
+    
     // 与挡板碰撞处理（专用版）
     // 根据击中点偏离挡板中心的比例计算反弹角度
     // 偏离越大，反弹角度越斜，增加游戏技巧性
@@ -113,6 +131,24 @@ public:
     // 调用后需外部处理：砖块消失、加分、道具生成
     // 注意：此函数仅检测碰撞，不处理碰撞后的物理响应
     bool CheckBrickCollision(Rectangle brickRect);
+    
+    // ========== 新增：检测两个小球是否碰撞（用于合并） ==========
+    // 检测当前小球与另一个小球是否发生碰撞
+    // 返回值：true=发生碰撞，false=未碰撞
+    // 碰撞后调用MergeWith()进行合并
+    bool CheckBallCollision(const Ball& other) const;
+    
+    // ========== 新增：与另一个小球合并（生成重球） ==========
+    // 合并条件：
+    //   - 两个球都不是重球
+    //   - 两个球都已发射
+    //   - 检测到碰撞
+    // 合并后：
+    //   - 当前球变为重球（isHeavyBall = true）
+    //   - 速度取两个球的矢量和
+    //   - 另一个球标记为待删除
+    // 返回值：true=合并成功，false=不满足合并条件
+    bool MergeWith(const Ball& other);
     
     // 发射小球
     // 从挡板位置发射小球，给予随机初始方向（-30°到+30°偏差）
@@ -164,6 +200,29 @@ public:
     
     // 设置发射状态
     void SetLaunched(bool state) { launched = state; }
+    
+    // ========== 新增：多球策略性 Getter/Setter ==========
+    
+    // 检查是否为主球
+    bool IsMainBall() const { return isMainBall; }
+    
+    // 设置是否为主球
+    void SetMainBall(bool main) { isMainBall = main; }
+    
+    // 检查是否为重球（可穿透）
+    bool IsHeavyBall() const { return isHeavyBall; }
+    
+    // 设置是否为重球
+    void SetHeavyBall(bool heavy) { isHeavyBall = heavy; }
+    
+    // 获取分裂计数
+    int GetSplitCount() const { return splitCount; }
+    
+    // 增加分裂计数（在分裂时调用）
+    void IncrementSplitCount() { splitCount++; }
+    
+    // 重置分裂计数（在合并或关卡重置时调用）
+    void ResetSplitCount() { splitCount = 0; }
 };
 
 #endif

@@ -1,0 +1,8 @@
+/mnt/c/Users/Lenovo/Desktop/Breakout_3D/build_linux/CMakeFiles/breakout_game.dir
+/mnt/c/Users/Lenovo/Desktop/Breakout_3D/build_linux/CMakeFiles/test_game.dir
+/mnt/c/Users/Lenovo/Desktop/Breakout_3D/build_linux/CMakeFiles/edit_cache.dir
+/mnt/c/Users/Lenovo/Desktop/Breakout_3D/build_linux/CMakeFiles/rebuild_cache.dir
+/mnt/c/Users/Lenovo/Desktop/Breakout_3D/build_linux/CMakeFiles/list_install_components.dir
+/mnt/c/Users/Lenovo/Desktop/Breakout_3D/build_linux/CMakeFiles/install.dir
+/mnt/c/Users/Lenovo/Desktop/Breakout_3D/build_linux/CMakeFiles/install/local.dir
+/mnt/c/Users/Lenovo/Desktop/Breakout_3D/build_linux/CMakeFiles/install/strip.dir
